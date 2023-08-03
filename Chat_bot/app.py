@@ -4,9 +4,8 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, make_response
 
-load_dotenv()
+app = Flask(__name__)
 
-os.chdir(os.path.dirname(__file__))
 Api_key = os.environ.get("OPENAI_API_KEY")
 
 def chat_bot_gen(input_text):
