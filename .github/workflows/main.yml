@@ -55,7 +55,7 @@ jobs:
           memory: 2
           port: 5000
           copy-env-vars: |
-            OPEN_API_KEY
+            OPENAI_API_KEY
           wait-for-service-stability: false
         
       - name: App Runner output
