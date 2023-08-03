@@ -1,0 +1,114 @@
+name: Deploy App Runner Services # Name of the workflow ---
+
+on:
+  push:
+    branches: [ main ] # Trigger workflow on git push to deploy branch
+  workflow_dispatch: # Allow manual invocation of the workflow
+
+jobs:
+  deploy-api-chatbot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 # Aumenta el tiempo de espera a 20 minutos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        id: aws-credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-chatbot-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: chatbot
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd ./Chat_bot
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Deploy API chatbot to App Runner
+        id: deploy-chatbot-apprunner
+        uses: awslabs/amazon-app-runner-deploy@main
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        with:
+          service: app-runner-desafio-api-chatbot
+          image: ${{ steps.build-chatbot-image.outputs.image }}
+          access-role-arn: ${{ secrets.ROLE_ARN }}
+          runtime: NODEJS_16
+          region: ${{ secrets.AWS_REGION }}
+          cpu: 1  
+          memory: 2
+          port: 5000
+          copy-env-vars: |
+            OPEN_API_KEY
+          wait-for-service-stability: false
+        
+      - name: App Runner output
+        run: echo "App runner output ${{  steps.deploy-chatbot-apprunner.outputs.service-id }}"
+
+  
+  deploy-api-modeloml:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        id: aws-credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-modeloml-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: modeloml
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd ./Modelo_ML/app
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Deploy API machine learning model to App Runner
+        id: deploy-modeloml-apprunner
+        uses: awslabs/amazon-app-runner-deploy@main
+        with:
+          service: app-runner-desafio-api-modeloml
+          image: ${{ steps.build-modeloml-image.outputs.image }}
+          access-role-arn: ${{ secrets.ROLE_ARN }}
+          runtime: NODEJS_16
+          region: ${{ secrets.AWS_REGION }}
+          cpu: 2 
+          memory: 4
+          port: 4000
+          wait-for-service-stability: false
+        
+
+      - name: App Runner output
+        run: echo "App runner output ${{  steps.deploy-modeloml-apprunner.outputs.service-id }}"
